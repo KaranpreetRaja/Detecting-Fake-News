@@ -56,7 +56,7 @@ X_train_features = extract_features(X_train, tokenizer, model, device)
 X_test_features = extract_features(X_test, tokenizer, model, device)
 
 # Trains classifier
-clf = LogisticRegression(max_iter=100)
+clf = LogisticRegression(max_iter=5000)
 clf.fit(X_train_features, y_train)
 
 # Evaluates model and prints stats
@@ -66,3 +66,15 @@ print("Precision:", precision_score(y_test, y_pred, average='weighted'))
 print("Recall:", recall_score(y_test, y_pred, average='weighted'))
 print("F1 Score:", f1_score(y_test, y_pred, average='weighted'))
 
+# Prediction pipeline meathod
+def predict(text, tokenizer, model, device, clf):
+    text = clean_text(text)
+    features = extract_features([text], tokenizer, model, device)
+    prediction = clf.predict(features)[0]
+    return bool(prediction)
+
+while True:
+    user_input = input("\nEnter your News prompt and it will tell you weather it is true or not, press 'stop' to exit: \n")
+    if user_input == "stop":
+        break
+    print("Prediction:", predict(user_input, tokenizer, model, device, clf))
