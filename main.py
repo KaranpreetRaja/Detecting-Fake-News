@@ -44,7 +44,7 @@ def extract_features(texts, tokenizer, model, device):
 
 
 # Loads and preprocesses the data
-file_name = "train.csv"
+file_name = "sample_news_articles.csv"
 text, label = load_data(file_name)
 
 # applies cross validation
@@ -55,7 +55,8 @@ kfold = get_stratified_kfold_splits(text, label, n_splits=n_splits)
 tokenizer = DistilBertTokenizer.from_pretrained("distilbert-base-uncased")
 model = DistilBertModel.from_pretrained("distilbert-base-uncased")
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print("cuda being used: "+ torch.cuda.is_available())
+print("cuda being used: " + str(torch.cuda.is_available()))
+
 model.to(device)
 
 
@@ -72,7 +73,7 @@ for train_index, test_index in kfold:
     # Calculates class weights for current fold and updates the classifier with the new class weights
     class_weights = class_weight.compute_sample_weight("balanced", y_train)
     class_weights = dict(enumerate(class_weights))
-    clf = LogisticRegression(max_iter=100, class_weight=class_weights, random_state=42)
+    clf = LogisticRegression(max_iter=5000, class_weight=class_weights, random_state=42)
 
     #  extracts features
     X_train_features = extract_features(X_train, tokenizer, model, device)
