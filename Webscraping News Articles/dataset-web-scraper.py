@@ -18,6 +18,19 @@ def get_onion_article_links2(url):
     article_links = [item.find('link').text for item in items]
     return article_links
 
+def get_onion_article_links_news_in_brief(url, page):
+    response = requests.get(url, params={'startIndex': (page - 1) * 20})
+    soup = BeautifulSoup(response.content, 'html.parser')
+    articles = soup.find_all('article')
+    article_links = [article.find('a')['href'] for article in articles]
+    
+    # Check if there's a 'Next' button to see if more pages are available.
+    next_button = soup.find('a', class_='sc-1out364-0 hMndXN js_link')
+    if next_button and 'Next' in next_button.text:
+        return article_links + get_onion_article_links_news_in_brief(url, page + 1)
+    else:
+        return article_links
+
 
 def get_bbc_article_links(url, page):
     response = requests.get(f'{url}?page={page}')
@@ -25,8 +38,6 @@ def get_bbc_article_links(url, page):
     articles = soup.find_all('a', class_='gs-c-promo-heading')
     article_links = ['https://www.bbc.com' + article['href'] if article['href'].startswith('/') else article['href'] for article in articles]
     return article_links
-
-
 
 def get_onion_article_text(article_url):
     response = requests.get(article_url)
@@ -36,7 +47,6 @@ def get_onion_article_text(article_url):
         return article.get_text().strip()
     else:
         return None
-
 
 def get_bbc_article_text(article_url):
     response = requests.get(article_url)
@@ -55,8 +65,6 @@ def get_bbc_article_text(article_url):
     else:
         return None
 
-
-
 def save_to_csv(articles_list, file_name='news_articles.csv'):
     with open(file_name, 'w', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
@@ -64,25 +72,34 @@ def save_to_csv(articles_list, file_name='news_articles.csv'):
         for article in articles_list:
             writer.writerow(article)
 
+
 def main():
     onion_url = 'https://www.theonion.com/'
-    onion_url2 = 'https://www.theonion.com/c/news-in-brief'
+    onion_news_in_brief_url = 'https://www.theonion.com/c/news-in-brief'
     bbc_url = 'https://www.bbc.com/news'
     bbc_url2 = 'https://www.bbc.com/'
+    bbc_world_url = 'https://www.bbc.com/news/world'
 
     articles = []
 
-    # Specify the number of pages you want to fetch articles from.
-    num_pages = 5
+    # Specify the number of pages you want to fetch articles from for other URLs.
+    num_pages = 2
 
     # Maintain separate sets for unique links for each website.
     unique_onion_links = set()
     unique_bbc_links = set()
 
+    # Fetch all Onion "News in Brief" articles
+    onion_article_links_news_in_brief = get_onion_article_links_news_in_brief(onion_news_in_brief_url, 1)
+
     for page in range(1, num_pages + 1):
         print("new loop")
-        onion_article_links = get_onion_article_links(onion_url, page) + (get_onion_article_links2(onion_url)) + (get_onion_article_links2(onion_url2))
-        bbc_article_links = get_bbc_article_links(bbc_url, page)
+        onion_article_links = get_onion_article_links(onion_url, page) + get_onion_article_links2(onion_url)
+        bbc_article_links = get_bbc_article_links(bbc_url, page) + get_bbc_article_links(bbc_url2, page) + get_bbc_article_links(bbc_world_url, page)
+
+        # Add Onion "News in Brief" articles for the first page
+        if page == 1:
+            onion_article_links += onion_article_links_news_in_brief
 
         for link in onion_article_links:
             # Only process the link if it's not already in the set.
