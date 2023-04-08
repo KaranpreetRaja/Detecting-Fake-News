@@ -104,6 +104,10 @@ def predict(text, tokenizer, model, device, clf):
     prediction = clf.predict(features)[0]
     return bool(prediction)
 
+
+# Saves the model's state_dict
+torch.save(model.state_dict(), 'model.pth')
+
 while True:
     user_input = input("\nEnter your News prompt and it will tell you weather it is true or not, press 'stop' to exit: \n")
     if user_input == "stop":
