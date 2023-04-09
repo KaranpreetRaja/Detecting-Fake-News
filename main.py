@@ -1,4 +1,5 @@
 # Imports all the libraries needed
+import os
 import pandas as pd
 import numpy as np
 import re
@@ -42,14 +43,77 @@ def extract_features(texts, tokenizer, model, device):
         features.append(embeddings[0])
     return np.vstack(features)
 
+def train_and_evaluate():
+    # applies cross validation
+    n_splits = 5
+    kfold = get_stratified_kfold_splits(text, label, n_splits=n_splits)
 
-# Loads and preprocesses the data
-file_name = "sample_news_articles.csv"
-text, label = load_data(file_name)
+    # Initializes scores
+    accuracy_scores = []
+    precision_scores = []
+    recall_scores = []
+    f1_scores = []
+    fold = 1
+    for train_index, test_index in kfold:
+        print(f"Training on fold {fold}/{n_splits}...")
+        X_train, X_test = text.iloc[train_index], text.iloc[test_index]
+        y_train, y_test = label.iloc[train_index], label.iloc[test_index]
+        
+        # Calculates class weights for current fold and updates the classifier with the new class weights
+        class_weights = class_weight.compute_sample_weight("balanced", y_train)
+        class_weights = dict(enumerate(class_weights))
+        clf = LogisticRegression(max_iter=5000, class_weight=class_weights, random_state=42)
 
-# applies cross validation
-n_splits = 5
-kfold = get_stratified_kfold_splits(text, label, n_splits=n_splits)
+        #  extracts features
+        X_train_features = extract_features(X_train, tokenizer, model, device)
+        X_test_features = extract_features(X_test, tokenizer, model, device)
+        
+        # Trains the classifier
+        clf.fit(X_train_features, y_train)
+
+        # Evaluates model
+        y_pred = clf.predict(X_test_features)
+        accuracy_scores.append(accuracy_score(y_test, y_pred))
+        precision_scores.append(precision_score(y_test, y_pred, pos_label=1))
+        recall_scores.append(recall_score(y_test, y_pred, pos_label=1))
+        f1_scores.append(f1_score(y_test, y_pred, pos_label=1))
+
+        print(f"Accuracy for fold {fold}: {accuracy_scores[-1]:.2%}")
+        fold += 1
+
+
+    # Evaluates model and prints stats
+    print("Average Accuracy:", np.mean(accuracy_scores))
+    print("Average Precision:", np.mean(precision_scores))
+    print("Average Recall:", np.mean(recall_scores))
+    print("Average F1 Score:", np.mean(f1_scores))
+
+
+# Prediction pipeline meathod
+def predict(text, tokenizer, model, device, clf):
+    text = clean_text(text)
+    features = extract_features([text], tokenizer, model, device)
+    probabilities = clf.predict_proba(features)[0]
+    
+    # Get the class with the highest probability
+    prediction = clf.predict(features)[0]
+    prediction_probability = max(probabilities)
+    
+    return bool(prediction), prediction_probability
+
+
+def test_model_on_custom_dataset(custom_dataset, tokenizer, model, device, clf):
+    # Preprocess and clean the dataset
+    custom_dataset["text"] = custom_dataset["text"].apply(clean_text)
+
+    # Extract features from the custom dataset
+    custom_dataset_features = extract_features(custom_dataset["text"], tokenizer, model, device)
+
+    # Make predictions using the classifier
+    custom_dataset_predictions = clf.predict(custom_dataset_features)
+
+    return custom_dataset_predictions
+
 
 # Initializes DistilBERT tokenizer and model
 tokenizer = DistilBertTokenizer.from_pretrained("distilbert-base-uncased")
@@ -59,57 +123,55 @@ print("cuda being used: " + str(torch.cuda.is_available()))
 
 model.to(device)
 
+# Loads and preprocesses the data
+file_name = "sample_news_articles.csv"
+text, label = load_data(file_name)
 
-# Initializes scores
-accuracy_scores = []
-precision_scores = []
-recall_scores = []
-f1_scores = []
+# Initialize the classifier
+class_weights = class_weight.compute_sample_weight("balanced", label)
+class_weights = dict(enumerate(class_weights))
+clf = LogisticRegression(max_iter=5000, class_weight=class_weights, random_state=42)
 
-for train_index, test_index in kfold:
-    X_train, X_test = text.iloc[train_index], text.iloc[test_index]
-    y_train, y_test = label.iloc[train_index], label.iloc[test_index]
-    
-    # Calculates class weights for current fold and updates the classifier with the new class weights
-    class_weights = class_weight.compute_sample_weight("balanced", y_train)
-    class_weights = dict(enumerate(class_weights))
-    clf = LogisticRegression(max_iter=5000, class_weight=class_weights, random_state=42)
+modelName = 'model.pth'
 
-    #  extracts features
-    X_train_features = extract_features(X_train, tokenizer, model, device)
-    X_test_features = extract_features(X_test, tokenizer, model, device)
-    
-    # Trains the classifier
-    clf.fit(X_train_features, y_train)
-
-    # Evaluates model
-    y_pred = clf.predict(X_test_features)
-    accuracy_scores.append(accuracy_score(y_test, y_pred))
-    precision_scores.append(precision_score(y_test, y_pred, pos_label=1))
-    recall_scores.append(recall_score(y_test, y_pred, pos_label=1))
-    f1_scores.append(f1_score(y_test, y_pred, pos_label=1))
+if not os.path.isfile(modelName):
+    train_and_evaluate()
+    torch.save(model.state_dict(), modelName)
+else:
+    model.load_state_dict(torch.load(modelName))
 
 
-# Evaluates model and prints stats
-print("Average Accuracy:", np.mean(accuracy_scores))
-print("Average Precision:", np.mean(precision_scores))
-print("Average Recall:", np.mean(recall_scores))
-print("Average F1 Score:", np.mean(f1_scores))
+file_name = "sample_news_articles.csv"
+# Loads and preprocesses the custom dataset
+test_dataset = pd.read_csv(file_name)
 
+# Initialize the classifier
+class_weights = class_weight.compute_sample_weight("balanced", test_dataset["label"])
+class_weights = dict(enumerate(class_weights))
+clf = LogisticRegression(max_iter=5000, class_weight=class_weights, random_state=42)
 
-# Prediction pipeline meathod
-def predict(text, tokenizer, model, device, clf):
-    text = clean_text(text)
-    features = extract_features([text], tokenizer, model, device)
-    prediction = clf.predict(features)[0]
-    return bool(prediction)
+# Fit the classifier using the entire dataset
+X_all = extract_features(text, tokenizer, model, device)
+clf.fit(X_all, label)
 
+# Test the model on the custom dataset
+custom_dataset_predictions = test_model_on_custom_dataset(test_dataset, tokenizer, model, device, clf)
+accuracy = accuracy_score(test_dataset["label"], custom_dataset_predictions)
+precision = precision_score(test_dataset["label"], custom_dataset_predictions, pos_label=1)
+recall = recall_score(test_dataset["label"], custom_dataset_predictions, pos_label=1)
+f1 = f1_score(test_dataset["label"], custom_dataset_predictions, pos_label=1)
 
-# Saves the model's state_dict
-torch.save(model.state_dict(), 'model.pth')
+print("\nCustom dataset statistics:")
+print(f"Accuracy: {accuracy:.2%}")
+print(f"Precision: {precision:.2%}")
+print(f"Recall: {recall:.2%}")
+print(f"F1 Score: {f1:.2%}")
+
 
 while True:
-    user_input = input("\nEnter your News prompt and it will tell you weather it is true or not, press 'stop' to exit: \n")
+    user_input = input("\nEnter your News prompt and it will tell you whether it is true or not, press 'stop' to exit: \n")
     if user_input == "stop":
         break
-    print("Prediction:", predict(user_input, tokenizer, model, device, clf))
+    prediction, prediction_probability = predict(user_input, tokenizer, model, device, clf)
+    print("Prediction:", prediction)
+    print("Prediction probability: {:.2%}".format(prediction_probability))
