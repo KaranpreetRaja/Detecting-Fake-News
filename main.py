@@ -9,12 +9,20 @@ import torch
 from transformers import DistilBertTokenizer, DistilBertModel
 from sklearn.model_selection import cross_val_score, StratifiedKFold
 from sklearn.utils import class_weight
-
+import chardet
 
 # Loads dataset from a csv file (specifically the columns "text" and "label")
 def load_data(file_path):
-    data = pd.read_csv(file_path)
+    with open(file_path, "rb") as f:
+        result = chardet.detect(f.read())
+
+    with open(file_path, "r", encoding=result["encoding"], errors='replace') as f:
+        data = pd.read_csv(f)
+
+    data["label"] = data["label"].astype(str)
     return data["text"], data["label"]
+
+
 
 # Filters the data
 def clean_text(text):
@@ -63,6 +71,7 @@ def train_and_evaluate():
         class_weights = class_weight.compute_sample_weight("balanced", y_train)
         class_weights = dict(enumerate(class_weights))
         clf = LogisticRegression(max_iter=5000, class_weight=class_weights, random_state=42)
+
 
         #  extracts features
         X_train_features = extract_features(X_train, tokenizer, model, device)
@@ -124,7 +133,7 @@ print("cuda being used: " + str(torch.cuda.is_available()))
 model.to(device)
 
 # Loads and preprocesses the data
-file_name = "sample_news_articles.csv"
+file_name = "sample_final_testing.csv"
 text, label = load_data(file_name)
 
 # Initialize the classifier
