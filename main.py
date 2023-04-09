@@ -20,8 +20,14 @@ def load_data(file_path):
         data = pd.read_csv(f)
 
     data["label"] = data["label"].astype(str)
-    return data["text"], data["label"]
+    
+    # Remove rows with null text or label
+    data = data.dropna(subset=["text", "label"])
+    
+    # Filter only rows with labels '0' and '1'
+    data = data[data["label"].isin(["0", "1"])]
 
+    return data["text"], data["label"]
 
 
 # Filters the data
@@ -68,9 +74,9 @@ def train_and_evaluate():
         y_train, y_test = label.iloc[train_index], label.iloc[test_index]
         
         # Calculates class weights for current fold and updates the classifier with the new class weights
-        class_weights = class_weight.compute_sample_weight("balanced", y_train)
-        class_weights = dict(enumerate(class_weights))
-        clf = LogisticRegression(max_iter=5000, class_weight=class_weights, random_state=42)
+        class_weights = class_weight.compute_class_weight("balanced", classes=np.unique(y_train), y=y_train)
+        class_weights_dict = {str(c): w for c, w in zip(np.unique(y_train), class_weights)}
+        clf = LogisticRegression(max_iter=5000, class_weight=class_weights_dict, random_state=42)
 
 
         #  extracts features
@@ -83,9 +89,10 @@ def train_and_evaluate():
         # Evaluates model
         y_pred = clf.predict(X_test_features)
         accuracy_scores.append(accuracy_score(y_test, y_pred))
-        precision_scores.append(precision_score(y_test, y_pred, pos_label=1))
-        recall_scores.append(recall_score(y_test, y_pred, pos_label=1))
-        f1_scores.append(f1_score(y_test, y_pred, pos_label=1))
+        precision_scores.append(precision_score(y_test, y_pred, pos_label='1'))
+        recall_scores.append(recall_score(y_test, y_pred, pos_label='1'))
+        f1_scores.append(f1_score(y_test, y_pred, pos_label='1'))
+
 
         print(f"Accuracy for fold {fold}: {accuracy_scores[-1]:.2%}")
         fold += 1
@@ -133,13 +140,13 @@ print("cuda being used: " + str(torch.cuda.is_available()))
 model.to(device)
 
 # Loads and preprocesses the data
-file_name = "sample_final_testing.csv"
+file_name = "final_training_news_articles.csv"
 text, label = load_data(file_name)
 
 # Initialize the classifier
-class_weights = class_weight.compute_sample_weight("balanced", label)
-class_weights = dict(enumerate(class_weights))
-clf = LogisticRegression(max_iter=5000, class_weight=class_weights, random_state=42)
+class_weights = class_weight.compute_class_weight("balanced", classes=np.unique(label.astype(str)), y=label.astype(str))
+class_weights_dict = {str(c): w for c, w in zip(np.unique(label), class_weights)}
+clf = LogisticRegression(max_iter=5000, class_weight=class_weights_dict, random_state=42)
 
 modelName = 'model.pth'
 
@@ -150,14 +157,18 @@ else:
     model.load_state_dict(torch.load(modelName))
 
 
-file_name = "sample_news_articles.csv"
+file_name = "sample_final_testing.csv"
+# Loads and preprocesses the custom dataset
 # Loads and preprocesses the custom dataset
 test_dataset = pd.read_csv(file_name)
+test_dataset["label"] = test_dataset["label"].astype(str)
+
 
 # Initialize the classifier
-class_weights = class_weight.compute_sample_weight("balanced", test_dataset["label"])
-class_weights = dict(enumerate(class_weights))
-clf = LogisticRegression(max_iter=5000, class_weight=class_weights, random_state=42)
+test_dataset_labels_str = test_dataset["label"].astype(str)
+class_weights = class_weight.compute_class_weight("balanced", classes=np.unique(test_dataset_labels_str), y=test_dataset_labels_str)
+class_weights_dict = {str(c): w for c, w in zip(np.unique(test_dataset["label"]), class_weights)}
+clf = LogisticRegression(max_iter=5000, class_weight=class_weights_dict, random_state=42)
 
 # Fit the classifier using the entire dataset
 X_all = extract_features(text, tokenizer, model, device)
@@ -165,10 +176,11 @@ clf.fit(X_all, label)
 
 # Test the model on the custom dataset
 custom_dataset_predictions = test_model_on_custom_dataset(test_dataset, tokenizer, model, device, clf)
-accuracy = accuracy_score(test_dataset["label"], custom_dataset_predictions)
-precision = precision_score(test_dataset["label"], custom_dataset_predictions, pos_label=1)
-recall = recall_score(test_dataset["label"], custom_dataset_predictions, pos_label=1)
-f1 = f1_score(test_dataset["label"], custom_dataset_predictions, pos_label=1)
+test_dataset_labels_str = test_dataset["label"].astype(str)
+accuracy = accuracy_score(test_dataset_labels_str, custom_dataset_predictions)
+precision = precision_score(test_dataset_labels_str, custom_dataset_predictions, pos_label='1')
+recall = recall_score(test_dataset_labels_str, custom_dataset_predictions, pos_label='1')
+f1 = f1_score(test_dataset_labels_str, custom_dataset_predictions, pos_label='1')
 
 print("\nCustom dataset statistics:")
 print(f"Accuracy: {accuracy:.2%}")
