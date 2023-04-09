@@ -18,16 +18,24 @@ def get_onion_article_links2(url):
     article_links = [item.find('link').text for item in items]
     return article_links
 
-def get_onion_article_links_news_in_brief(url, page):
+count = 0
+
+
+from urllib.parse import urljoin
+
+def get_onion_article_links_news_in_brief(url, page, count=0):
     response = requests.get(url, params={'startIndex': (page - 1) * 20})
     soup = BeautifulSoup(response.content, 'html.parser')
     articles = soup.find_all('article')
-    article_links = [article.find('a')['href'] for article in articles]
-    
+    article_links = [article.find('a', class_='sc-1out364-0 dPMosf js_link')['href'] for article in articles if article.find('a', class_='sc-1out364-0 dPMosf js_link')]
+
     # Check if there's a 'Next' button to see if more pages are available.
-    next_button = soup.find('a', class_='sc-1out364-0 hMndXN js_link')
-    if next_button and 'Next' in next_button.text:
-        return article_links + get_onion_article_links_news_in_brief(url, page + 1)
+    next_button = soup.find('a', rel='next')
+    count += 1
+    if next_button and count < 900:
+        print("found next button " + str(count))
+        next_url = urljoin(url, next_button['href'])
+        return article_links + get_onion_article_links_news_in_brief(next_url, 1, count)
     else:
         return article_links
 
@@ -75,49 +83,34 @@ def save_to_csv(articles_list, file_name='news_articles.csv'):
 
 def main():
     onion_url = 'https://www.theonion.com/'
-    onion_news_in_brief_url = 'https://www.theonion.com/c/news-in-brief'
+    onion_news_in_brief_url = 'https://www.theonion.com/breaking-news/news-in-brief'
     bbc_url = 'https://www.bbc.com/news'
     bbc_url2 = 'https://www.bbc.com/'
     bbc_world_url = 'https://www.bbc.com/news/world'
 
     articles = []
 
-    # Specify the number of pages you want to fetch articles from for other URLs.
-    num_pages = 2
-
-    # Maintain separate sets for unique links for each website.
-    unique_onion_links = set()
-    unique_bbc_links = set()
-
     # Fetch all Onion "News in Brief" articles
     onion_article_links_news_in_brief = get_onion_article_links_news_in_brief(onion_news_in_brief_url, 1)
+    print(onion_article_links_news_in_brief)
 
-    for page in range(1, num_pages + 1):
-        print("new loop")
-        onion_article_links = get_onion_article_links(onion_url, page) + get_onion_article_links2(onion_url)
-        bbc_article_links = get_bbc_article_links(bbc_url, page) + get_bbc_article_links(bbc_url2, page) + get_bbc_article_links(bbc_world_url, page)
+    onion_article_links = get_onion_article_links(onion_url, 1) + get_onion_article_links2(onion_url)
+    bbc_article_links = get_bbc_article_links(bbc_url, 1) + get_bbc_article_links(bbc_url2, 1) + get_bbc_article_links(bbc_world_url, 1)
 
-        # Add Onion "News in Brief" articles for the first page
-        if page == 1:
-            onion_article_links += onion_article_links_news_in_brief
+    # Add Onion "News in Brief" articles for the first page
+    onion_article_links += onion_article_links_news_in_brief
 
-        for link in onion_article_links:
-            # Only process the link if it's not already in the set.
-            if link not in unique_onion_links:
-                print(link)
-                unique_onion_links.add(link)
-                article_text = get_onion_article_text(link)
-                if article_text:
-                    articles.append((article_text, 1))
+    for link in onion_article_links:
+        print("processing: " + link)
+        article_text = get_onion_article_text(link)
+        if article_text:
+            articles.append((article_text, 1))
 
-        for link in bbc_article_links:
-            # Only process the link if it's not already in the set.
-            if link not in unique_bbc_links:
-                print(link)
-                unique_bbc_links.add(link)
-                article_text = get_bbc_article_text(link)
-                if article_text:
-                    articles.append((article_text, 0))
+    for link in bbc_article_links:
+        print("processing: " + link)
+        article_text = get_bbc_article_text(link)
+        if article_text:
+            articles.append((article_text, 0))
 
     save_to_csv(articles)
 
